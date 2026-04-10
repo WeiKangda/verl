@@ -1,6 +1,10 @@
 #!/bin/bash
 # install_verl_hpc.sh — FSDP + vLLM only, no Megatron, no SGLang
 #
+# Pinned to match verl v0.6.x reference install
+# (scripts/install_vllm_sglang_mcore.sh): torch 2.6 + cu124 + vllm 0.8.5.post1
+# + flash-attn 2.7.4.post1 + flashinfer 0.2.2.post1, Python 3.10.
+#
 # Target: TAMU HPRC (or similar HPC with EasyBuild modules)
 # Layout:
 #   - Source code (this script + verl working copy):
@@ -49,13 +53,16 @@ if [ ! -d "$VERL_SRC" ]; then
 fi
 
 # ========== 1. HPC modules ==========
+# Reference wheels are built against cu124 (CUDA 12.4). Pinned to CUDA/12.4.0
+# on TAMU HPRC so runtime matches the wheels exactly.
 module purge
-module load CUDA/12.8.0
+module load CUDA/12.4.0
 module load WebProxy
-export CUDA_HOME=${EBROOTCUDA:-/sw/eb/sw/CUDA/12.8.0}
+export CUDA_HOME=${EBROOTCUDA:?EBROOTCUDA not set after module load CUDA/12.4.0}
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}
-echo "=== CUDA check ==="
+echo "=== CUDA module: CUDA/12.4.0 ==="
+echo "CUDA_HOME = $CUDA_HOME"
 nvcc --version
 nvidia-smi
 
@@ -69,42 +76,48 @@ if ! command -v uv &> /dev/null; then
 fi
 uv --version
 
-# ========== 3. Create venv (Python 3.12, required by flash-attn wheel) ==========
+# ========== 3. Create venv (Python 3.10, required by reference flash-attn wheel) ==========
 cd $VERL_ENV_ROOT
-uv python install 3.12
-uv venv --python 3.12 $VERL_ENV_ROOT/verl_env
+uv python install 3.10
+uv venv --python 3.10 $VERL_ENV_ROOT/verl_env
 source $VERL_ENV_ROOT/verl_env/bin/activate
 python --version
 
 export MAX_JOBS=32
 
 # ========== 4. Inference backend: vLLM only ==========
-echo "[1/5] install vLLM (will pull torch 2.8 + cu12)"
-uv pip install "vllm==0.11.0"
+# Pinned versions from verl v0.6.x install_vllm_sglang_mcore.sh.
+echo "[1/5] install vLLM + torch 2.6 (cu124)"
+uv pip install --no-cache-dir \
+    "vllm==0.8.5.post1" \
+    "torch==2.6.0" \
+    "torchvision==0.21.0" \
+    "torchaudio==2.6.0" \
+    "tensordict==0.6.2" \
+    torchdata
 
 # ========== 5. Training basics ==========
 echo "[2/5] install basic packages"
 uv pip install "transformers[hf_xet]>=4.51.0" accelerate datasets peft hf-transfer \
-    "numpy<2.0.0" "pyarrow>=15.0.0" pandas "tensordict>=0.8.0,<=0.10.0,!=0.9.0" torchdata \
+    "numpy<2.0.0" "pyarrow>=15.0.0" pandas \
     "ray[default]" codetiming hydra-core pylatexenc qwen-vl-utils wandb dill pybind11 \
-    liger-kernel mathruler pytest py-spy pre-commit ruff tensorboard
+    liger-kernel mathruler pytest py-spy pyext pre-commit ruff tensorboard
 
 uv pip install "nvidia-ml-py>=12.560.30" "fastapi[standard]>=0.115.0" \
     "optree>=0.13.0" "pydantic>=2.9" "grpcio>=1.62.1"
 
 # ========== 6. FlashAttention + FlashInfer ==========
+# Prebuilt wheels for torch 2.6 + cu124 + Python 3.10 (cxx11abi=FALSE).
 echo "[3/5] install FlashAttention and FlashInfer"
-# Try prebuilt wheel first; fall back to source build if GLIBC too old.
-uv pip install flash-attn==2.8.1 || {
-    echo "Prebuilt wheel failed (likely GLIBC mismatch), building from source..."
-    export FLASH_ATTENTION_FORCE_BUILD=TRUE
-    export TORCH_CUDA_ARCH_LIST="9.0"      # only H100, saves compile time
-    export MAX_JOBS=4                       # keep memory under control (~50 GB peak)
-    export NVCC_THREADS=1
-    uv pip install flash-attn==2.8.1 --no-build-isolation
-}
+FA_WHL=flash_attn-2.7.4.post1+cu12torch2.6cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+FI_WHL=flashinfer_python-0.2.2.post1+cu124torch2.6-cp38-abi3-linux_x86_64.whl
 
-uv pip install flashinfer-python==0.3.1
+cd $TMPDIR
+wget -nv https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/$FA_WHL
+uv pip install --no-cache-dir "$TMPDIR/$FA_WHL"
+
+wget -nv https://github.com/flashinfer-ai/flashinfer/releases/download/v0.2.2.post1/$FI_WHL
+uv pip install --no-cache-dir "$TMPDIR/$FI_WHL"
 
 # ========== 7. opencv fix ==========
 echo "[4/5] fix opencv"
@@ -127,6 +140,7 @@ print(f"GPU         : {torch.cuda.get_device_name(0) if torch.cuda.is_available(
 print(f"vllm        : {vllm.__version__}")
 print(f"transformers: {transformers.__version__}")
 import flash_attn; print(f"flash_attn  : {flash_attn.__version__}")
+import flashinfer; print(f"flashinfer  : {flashinfer.__version__}")
 import verl; print(f"verl        : OK")
 EOF
 

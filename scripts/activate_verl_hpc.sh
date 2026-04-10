@@ -5,6 +5,9 @@
 #   - Env + caches: /scratch/group/p.cis240567.000/$USER  (VERL_ENV_ROOT)
 #   - verl source : /scratch/user/$USER/ExploratoryReasoning/verl  (VERL_SRC)
 #
+# CUDA is pinned to CUDA/12.4.0 to match the cu124 wheels used at install time
+# (torch 2.6 + flash-attn 2.7.4.post1 + flashinfer 0.2.2.post1).
+#
 # Usage:
 #   source /scratch/user/$USER/ExploratoryReasoning/verl/scripts/activate_verl_hpc.sh
 
@@ -26,7 +29,7 @@ export TMPDIR=$VERL_ENV_ROOT/tmp
 export PATH=$VERL_ENV_ROOT/uv_bin:$PATH
 
 module purge
-module load CUDA/12.8.0
+module load CUDA/12.4.0
 module load WebProxy
 export CUDA_HOME=$EBROOTCUDA
 export PATH=$CUDA_HOME/bin:$PATH
@@ -36,3 +39,4 @@ source $VERL_ENV_ROOT/verl_env/bin/activate
 echo "verl env activated: $(which python)"
 echo "  VERL_ENV_ROOT = $VERL_ENV_ROOT"
 echo "  VERL_SRC      = $VERL_SRC"
+echo "  CUDA module   = CUDA/12.4.0 ($CUDA_HOME)"
