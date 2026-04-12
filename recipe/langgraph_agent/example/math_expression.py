@@ -26,7 +26,8 @@ def calculate(a: int, b: int, operand: str) -> int:
         b: the second operand
         operand: '+' or '-' or '*' or '@'
     """
-    assert operand in ["+", "-", "*", "@"], f"unknown operand {operand}"
+    if operand not in ["+", "-", "*", "@"]:
+        return f"Error: unknown operand '{operand}'. Must be one of: +, -, *, @"
     if operand == "@":
         return 3 * a - 2 * b
     return eval(f"{a} {operand} {b}")
