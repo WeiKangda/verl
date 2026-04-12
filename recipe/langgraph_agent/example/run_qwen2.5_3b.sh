@@ -1,18 +1,26 @@
-set -x
+set -xeuo pipefail
+
+# ================= cluster topology =================
+export GPUS_PER_NODE=${SLURM_GPUS_ON_NODE:-${GPUS_PER_NODE:-2}}
+NNODES=${SLURM_JOB_NUM_NODES:-${NNODES:-1}}
+export NNODES
 
 # ================= data/model/tool =================
-HDFS_ROOT=${HDFS_ROOT:-$PWD}
 DATA_ROOT=${DATA_ROOT:-$PWD}
 
-model_path=$DATA_ROOT/model/Qwen2.5-3B-Instruct
+# Prefer local model if present, otherwise fall back to HF hub
+model_path=${model_path:-$DATA_ROOT/model/Qwen2.5-3B-Instruct}
+if [ ! -d "$model_path" ]; then
+    model_path=Qwen/Qwen2.5-3B-Instruct
+fi
 
-train_files=$DATA_ROOT/dataset/math_expression_tool/train.parquet
-test_files=$DATA_ROOT/dataset/math_expression_tool/test.parquet
+train_files=$DATA_ROOT/data/math_expression_tool/train.parquet
+test_files=$DATA_ROOT/data/math_expression_tool/test.parquet
 
 # agent
 agent_loop_config_path=recipe/langgraph_agent/example/agent.yaml
 
-# wandb
+# logging
 project_name=math_expression_tool
 experiment_name=qwen2.5-3b
 default_local_dir=$DATA_ROOT/checkpoint/$experiment_name
@@ -33,14 +41,16 @@ max_prompt_length=1024
 max_response_length=2048
 actor_lr=1e-6
 
-train_batch_size=128
-ppo_mini_batch_size=16
+train_batch_size=32
+ppo_mini_batch_size=8
 n_resp_per_prompt=8
 n_resp_per_prompt_val=1
 
-# ================= perfomance =================
-infer_tp=2 # vllm
-train_sp=4 # train
+# ================= performance =================
+export VLLM_ATTENTION_BACKEND=FLASH_ATTN
+
+infer_tp=2  # vLLM tensor parallel size
+train_sp=2  # Ulysses sequence parallel size (must be <= num GPUs)
 offload=True
 
 actor_max_token_len_per_gpu=$(( (max_prompt_length + max_response_length) * 4 ))
@@ -86,14 +96,14 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.6 \
     actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
     actor_rollout_ref.rollout.val_kwargs.n=$n_resp_per_prompt_val \
-    trainer.logger=['console','wandb'] \
+    trainer.logger='["console"]' \
     trainer.project_name=$project_name \
     trainer.experiment_name=$experiment_name \
-    trainer.n_gpus_per_node=$ARNOLD_WORKER_GPU \
+    trainer.n_gpus_per_node=$GPUS_PER_NODE \
     trainer.val_before_train=True \
     trainer.log_val_generations=50 \
-    trainer.nnodes=$ARNOLD_WORKER_NUM \
+    trainer.nnodes=$NNODES \
     trainer.save_freq=-1 \
     trainer.default_local_dir=$default_local_dir \
     trainer.test_freq=5 \
-    trainer.total_epochs=1 $@
+    trainer.total_epochs=1 "$@"

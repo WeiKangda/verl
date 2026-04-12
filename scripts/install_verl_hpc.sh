@@ -1,9 +1,13 @@
 #!/bin/bash
 # install_verl_hpc.sh — FSDP + vLLM only, no Megatron, no SGLang
 #
-# Pinned to match verl v0.6.x reference install
+# Pinned to match verl v0.5.x reference install
 # (scripts/install_vllm_sglang_mcore.sh): torch 2.6 + cu124 + vllm 0.8.5.post1
 # + flash-attn 2.7.4.post1 + flashinfer 0.2.2.post1, Python 3.10.
+#
+# Note: v0.6.x async rollout code requires vllm 0.9.0, which pulls in
+# torch 2.7 and breaks flash-attn <=2.7.x. v0.5.x is fully compatible
+# with this stack.
 #
 # Target: TAMU HPRC (or similar HPC with EasyBuild modules)
 # Layout:
