@@ -47,6 +47,7 @@ n_resp_per_prompt=8
 n_resp_per_prompt_val=1
 
 # ================= performance =================
+export VLLM_USE_V1=1
 export VLLM_ATTENTION_BACKEND=FLASH_ATTN
 
 infer_tp=2  # vLLM tensor parallel size
